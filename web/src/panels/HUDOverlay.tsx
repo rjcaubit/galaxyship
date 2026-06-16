@@ -3,7 +3,7 @@ import { useAuthStore } from '../store/authStore'
 import { useNavigate } from 'react-router-dom'
 import { TurnCounter, ResourceHUD } from '../components/game'
 import { Button, IconButton } from '../components/ui'
-import { apiEndTurn } from '../api/gameApi'
+import { endTurn } from '../game/gameService'
 import { ColonyPanel }    from './ColonyPanel'
 import { TechTreePanel }  from './TechTreePanel'
 import { DiplomacyPanel } from './DiplomacyPanel'
@@ -19,19 +19,18 @@ export function HUDOverlay() {
   const updateState   = useGameStore(s => s.updateState)
   const setEvents     = useGameStore(s => s.setEvents)
   const setProcessing = useGameStore(s => s.setProcessing)
-  const token         = useAuthStore(s => s.token)
   const logout        = useAuthStore(s => s.logout)
   const navigate      = useNavigate()
 
-  if (!state || !token || !gameId) return null
+  if (!state || !gameId) return null
 
   const combatEvent = pendingEvents.find(e => e.type === 'COMBAT')
 
   async function handleEndTurn() {
-    if (!token || !gameId) return
+    if (!gameId) return
     setProcessing(true)
     try {
-      const { state: newState, events } = await apiEndTurn(token, gameId, [], [])
+      const { state: newState, events } = await endTurn(gameId, [], [])
       updateState(newState)
       setEvents(events)
     } finally {

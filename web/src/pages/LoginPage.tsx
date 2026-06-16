@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '../components/ui'
+import { Button, Divider } from '../components/ui'
 import { useAuthStore } from '../store/authStore'
 import { apiLogin, apiRegister } from '../api/authApi'
+import { soloHasSave } from '../game/soloEngine'
 
 export function LoginPage() {
   const [mode, setMode]     = useState<'login' | 'register'>('login')
@@ -10,8 +11,15 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError]   = useState('')
   const [loading, setLoading] = useState(false)
-  const setAuth  = useAuthStore(s => s.setAuth)
-  const navigate = useNavigate()
+  const setAuth   = useAuthStore(s => s.setAuth)
+  const playSolo  = useAuthStore(s => s.playSolo)
+  const navigate  = useNavigate()
+  const hasSolo   = soloHasSave()
+
+  function handleSolo(continuar: boolean) {
+    playSolo()
+    navigate(continuar ? '/game/solo' : '/game/new')
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -49,6 +57,18 @@ export function LoginPage() {
           <Button type="submit" className="w-full" loading={loading}>
             {mode === 'login' ? 'Entrar' : 'Criar conta'}
           </Button>
+
+          <Divider label="ou" />
+
+          {hasSolo && (
+            <Button type="button" variant="primary" className="w-full" onClick={() => handleSolo(true)}>
+              ▶ Continuar partida solo
+            </Button>
+          )}
+          <Button type="button" variant="secondary" className="w-full" onClick={() => handleSolo(false)}>
+            🚀 Jogar Solo (sem login)
+          </Button>
+          <p className="text-center text-xs text-white/30">Modo solo roda no seu navegador, sem conta.</p>
         </form>
       </div>
     </div>

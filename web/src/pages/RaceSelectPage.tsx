@@ -5,7 +5,7 @@ import { RaceCard } from '../components/game'
 import { Button } from '../components/ui'
 import { useAuthStore } from '../store/authStore'
 import { useGameStore } from '../store/gameStore'
-import { apiCreateGame } from '../api/gameApi'
+import { createGame } from '../game/gameService'
 
 const RACES = [new HumanRace(), new ZorgRace(), new SylarRace()]
 
@@ -13,15 +13,15 @@ export function RaceSelectPage() {
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
-  const token    = useAuthStore(s => s.token)
+  const mode     = useAuthStore(s => s.mode)
   const setGame  = useGameStore(s => s.setGame)
   const navigate = useNavigate()
 
   async function handleStart() {
-    if (!selected || !token) return
+    if (!selected || !mode) return
     setLoading(true)
     try {
-      const { gameId, state } = await apiCreateGame(token, selected)
+      const { gameId, state } = await createGame(selected)
       setGame(gameId, state)
       navigate(`/game/${gameId}`)
     } catch (err) {
