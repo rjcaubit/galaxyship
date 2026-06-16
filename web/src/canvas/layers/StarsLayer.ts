@@ -1,12 +1,13 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js'
 import type { StarSystemData } from '@galaxyship/shared'
+import { mapX, mapY } from './coords'
 
 const STAR_COLORS: Record<string, number> = {
-  yellow: 0xFFD54F, red: 0xEF9A9A, blue: 0x4FC3F7, white: 0xFFFFFF, orange: 0xFFB74D
+  yellow: 0xFFD54F, red: 0xEF6E6E, blue: 0x4FC3F7, white: 0xFFFFFF, orange: 0xFFB74D
 }
 
 export class StarsLayer extends Container {
-  private starGraphics: Map<string, { g: Graphics; t: Text; pulsePhase: number }> = new Map()
+  private starGraphics: Map<string, { glow: Graphics; pulsePhase: number }> = new Map()
 
   render(
     systems: Record<string, StarSystemData>,
@@ -21,38 +22,53 @@ export class StarsLayer extends Container {
     for (const sys of Object.values(systems)) {
       const explored = exploredIds.includes(sys.id)
       const colonized = colonizedSystemIds.includes(sys.id)
-      const px = sys.x * width
-      const py = sys.y * height
-      const color = explored ? (STAR_COLORS[sys.starType] ?? 0xffffff) : 0x444466
+      const px = mapX(sys.x, width)
+      const py = mapY(sys.y, height)
+      const color = explored ? (STAR_COLORS[sys.starType] ?? 0xffffff) : 0x5b5b80
 
-      const g = new Graphics()
-      g.circle(0, 0, explored ? 6 : 3).fill({ color, alpha: explored ? 1 : 0.4 })
-      g.circle(0, 0, explored ? 12 : 6).fill({ color, alpha: 0.1 })
-      if (colonized) g.circle(0, 0, 14).stroke({ color: 0xA5D6A7, width: 2 })
-      g.x = px; g.y = py
-      g.eventMode = 'static'
-      g.cursor    = 'pointer'
-      g.hitArea   = { contains: (x: number, y: number) => (x * x + y * y) <= 18 * 18 }
+      // halo externo (glow) — animado
+      const glow = new Graphics()
+      glow.circle(0, 0, explored ? 26 : 12).fill({ color, alpha: 0.10 })
+      glow.circle(0, 0, explored ? 16 : 8).fill({ color, alpha: 0.18 })
+      glow.x = px; glow.y = py
+
+      // corpo da estrela
+      const body = new Graphics()
+      if (colonized) body.circle(0, 0, 17).stroke({ color: 0x8effb0, width: 2.5, alpha: 0.9 })
+      body.circle(0, 0, explored ? 8 : 4).fill({ color })
+      if (explored) body.circle(0, 0, 3.5).fill({ color: 0xffffff, alpha: 0.9 }) // núcleo quente
+      body.x = px; body.y = py
+      body.eventMode = 'static'
+      body.cursor    = 'pointer'
+      body.hitArea   = { contains: (x: number, y: number) => (x * x + y * y) <= 22 * 22 }
+      ;(body as Graphics & { __systemId: string }).__systemId = sys.id
 
       const label = new Text({
-        text: explored ? sys.name : '???',
-        style: new TextStyle({ fill: explored ? 0xffffff : 0x555577, fontSize: 10, fontFamily: 'Exo 2, sans-serif' })
+        text: explored ? sys.name : '',
+        style: new TextStyle({
+          fill: 0xffffff, fontSize: 13, fontFamily: 'Exo 2, sans-serif',
+          fontWeight: '600', dropShadow: { color: 0x000000, blur: 4, distance: 0, alpha: 0.8 },
+        })
       })
-      label.x = px + 12; label.y = py - 6
+      label.x = px + 14; label.y = py - 8
 
-      this.addChild(g, label)
-      this.starGraphics.set(sys.id, { g, t: label, pulsePhase: (sys.x + sys.y) * Math.PI * 4 })
+      this.addChild(glow, body, label)
+      this.starGraphics.set(sys.id, { glow, pulsePhase: (sys.x + sys.y) * Math.PI * 4 })
     }
   }
 
   tick(elapsed: number) {
-    for (const { g, pulsePhase } of this.starGraphics.values()) {
-      g.alpha = 0.8 + 0.2 * Math.sin(elapsed * 0.002 + pulsePhase)
+    for (const { glow, pulsePhase } of this.starGraphics.values()) {
+      const k = 0.7 + 0.3 * Math.sin(elapsed * 0.002 + pulsePhase)
+      glow.scale.set(k)
     }
   }
 
   onStarClick(systemId: string, callback: (id: string) => void) {
-    const entry = this.starGraphics.get(systemId)
-    if (entry) entry.g.on('pointertap', () => callback(systemId))
+    // encontra o body correspondente (tem __systemId)
+    for (const child of this.children) {
+      const sid = (child as Graphics & { __systemId?: string }).__systemId
+      if (sid === systemId) child.on('pointertap', () => callback(systemId))
+    }
   }
 }
