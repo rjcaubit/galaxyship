@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authMiddleware, AuthRequest } from '../middleware/auth'
+import { asyncHandler } from '../middleware/asyncHandler'
 import { generateGalaxy } from '@galaxyship/shared'
 import type { GameState, FleetData, ColonyData, DiplomacyRelation } from '@galaxyship/shared'
 import { processTurn, applyDiplomacy } from '../services/turnService'
@@ -10,7 +11,7 @@ const prisma = new PrismaClient()
 
 router.use(authMiddleware)
 
-router.post('/new', async (req: AuthRequest, res) => {
+router.post('/new', asyncHandler(async (req: AuthRequest, res) => {
   const { raceId } = req.body
   if (!raceId) return res.status(400).json({ error: 'raceId obrigatório' })
 
@@ -72,24 +73,24 @@ router.post('/new', async (req: AuthRequest, res) => {
   })
 
   res.status(201).json({ gameId: game.id, state })
-})
+}))
 
-router.get('/list', async (req: AuthRequest, res) => {
+router.get('/list', asyncHandler(async (req: AuthRequest, res) => {
   const games = await prisma.game.findMany({
     where: { userId: req.userId! },
     select: { id: true, raceId: true, turnNumber: true, createdAt: true, updatedAt: true }
   })
   res.json({ games })
-})
+}))
 
-router.get('/:id', async (req: AuthRequest, res) => {
+router.get('/:id', asyncHandler(async (req: AuthRequest, res) => {
   const game = await prisma.game.findUnique({ where: { id: req.params.id } })
   if (!game) return res.status(404).json({ error: 'not_found' })
   if (game.userId !== req.userId) return res.status(403).json({ error: 'forbidden' })
   res.json({ gameId: game.id, state: game.stateJson, turn: game.turnNumber })
-})
+}))
 
-router.post('/:id/turn', async (req: AuthRequest, res) => {
+router.post('/:id/turn', asyncHandler(async (req: AuthRequest, res) => {
   const game = await prisma.game.findUnique({ where: { id: req.params.id } })
   if (!game) return res.status(404).json({ error: 'not_found' })
   if (game.userId !== req.userId) return res.status(403).json({ error: 'forbidden' })
@@ -103,10 +104,10 @@ router.post('/:id/turn', async (req: AuthRequest, res) => {
   })
 
   res.json({ state: newState, events })
-})
+}))
 
 // Ação diplomática isolada — aplica relação SEM avançar o turno (ver B1)
-router.post('/:id/diplomacy', async (req: AuthRequest, res) => {
+router.post('/:id/diplomacy', asyncHandler(async (req: AuthRequest, res) => {
   const game = await prisma.game.findUnique({ where: { id: req.params.id } })
   if (!game) return res.status(404).json({ error: 'not_found' })
   if (game.userId !== req.userId) return res.status(403).json({ error: 'forbidden' })
@@ -120,15 +121,15 @@ router.post('/:id/diplomacy', async (req: AuthRequest, res) => {
 
   await prisma.game.update({ where: { id: req.params.id }, data: { stateJson: state as object } })
   res.json({ state })
-})
+}))
 
-router.put('/:id/save', async (req: AuthRequest, res) => {
+router.put('/:id/save', asyncHandler(async (req: AuthRequest, res) => {
   const game = await prisma.game.findUnique({ where: { id: req.params.id } })
   if (!game) return res.status(404).json({ error: 'not_found' })
   if (game.userId !== req.userId) return res.status(403).json({ error: 'forbidden' })
   const { state } = req.body
   await prisma.game.update({ where: { id: req.params.id }, data: { stateJson: state } })
   res.json({ ok: true })
-})
+}))
 
 export default router

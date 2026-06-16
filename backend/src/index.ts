@@ -18,6 +18,11 @@ app.use('/api/game', gameRouter)
 // import { Server } from 'socket.io'
 // const io = new Server(server, { cors: { origin: '*' } })
 
+// Rede de proteção: nunca derrubar o processo por erro assíncrono solto
+// (ex.: banco temporariamente fora do ar). Loga e segue.
+process.on('unhandledRejection', (reason) => console.error('[unhandledRejection]', reason))
+process.on('uncaughtException',  (err)    => console.error('[uncaughtException]', err))
+
 app.listen(PORT, () => console.log(`Backend rodando em :${PORT}`))
 
 export default app
