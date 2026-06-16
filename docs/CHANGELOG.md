@@ -1,5 +1,31 @@
 # Changelog — GalaxyShip
 
+## 2026-06-16 — gameplay solo completo (#1)
+
+### Motor de jogo (shared, modular + verificado)
+- Módulos: `constants`, `techCatalog`, `gameMath`, `ai`, `combat`, `gameSetup`, `turnProcessor` (movido do backend)
+- Movimento de frota com **ETA** (distância ÷ velocidade, afetada por tech de propulsão)
+- Colonização (nave colônia → sistema vazio → colônia)
+- Economia por **ratios estilo Master of Orion**: Indústria/Ecologia/Pesquisa/Naves/Defesa
+- Tecnologia com **efeitos reais** (6 categorias × 5 níveis): ataque, defesa, velocidade, fábricas/desconto, pesquisa, pop máx
+- **IA com FSM** e personalidades (Zorg agressivo, Sylar expansionista) — NPCs com colônias e economia próprias
+- Combate com **atrito** (conquistar custa naves) e captura de sistema; **fusão de frotas** concentra a força
+- Condição de **vitória/derrota**; defesa planetária inerente (pop+fábricas+bases)
+- Verificado por **simulador headless** (`shared/scripts/sim.cjs`): 13 checks; bateria 3 raças × 4 seeds sem falhas, desfechos variados
+
+### Interface de jogabilidade (web)
+- **Naves Kenney (CC0)** no mapa, tingidas por raça; frotas em trânsito ao longo das rotas com ETA
+- **Painel do sistema**: planetas, frotas presentes, ações (mover, colonizar, gerenciar)
+- **Movimento**: selecionar frota → modo mover → tocar destino (painéis não bloqueiam o mapa)
+- **Painel de colônia** estilo MoO: 5 sliders de produção + fila de construção de naves (Destróier bloqueado por tech)
+- **Árvore de tecnologia funcional**: escolher pesquisa, ver tiers e progresso
+- **Relatório de turno** (chegada/colônia/combate/tech) + **modal de vitória/derrota**
+- **Modo solo sem login** roda 100% no browser (localStorage), sem backend nem Docker
+
+### Robustez
+- Backend resiliente a falha de DB (asyncHandler + guards de processo)
+
+
 ## 2026-06-15 — #1 — feat: MVP jogo 4X espacial GalaxyShip
 
 ### Adicionado

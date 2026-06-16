@@ -1,32 +1,31 @@
 # CODEMAP — GalaxyShip
 
 > Fonte da verdade arquitetural. Atualizar a cada issue implementada.
-> Última atualização: 2026-06-15 (ISSUE_1 — implementada)
+> Última atualização: 2026-06-16 (ISSUE_1 — jogabilidade solo completa)
 
 ---
 
-## Status de implementação (MVP issue #1)
+## Status de implementação
 
-Para evitar divergência entre plano e realidade, esta tabela marca o que é
-**funcional** vs **stub visual** vs **planejado (arquivo ainda não existe)**.
+Jogabilidade 4X solo **completa e jogável** (verificada por simulador headless + browser).
 
 | Área | Status | Observação |
 |------|--------|------------|
-| Auth (register/login/JWT) | ✅ funcional | |
-| Galáxia procedural por seed | ✅ funcional | 55 sistemas, fog of war |
-| Mapa Pixi (estrelas/nebulosas/drag/pinch) | ✅ funcional | |
-| Colônia: crescimento pop + produção + construção | ✅ funcional | calculado no turno |
-| Pesquisa: acúmulo + desbloqueio de tech | ✅ funcional (sem efeitos) | tech desbloqueada não altera stats ainda |
+| Auth + modo solo sem login | ✅ funcional | solo roda no browser (localStorage), sem backend |
+| Galáxia procedural por seed | ✅ funcional | 55 sistemas, fog of war, rotas estelares |
+| Mapa Pixi (estrelas/nebulosas/naves Kenney/drag/pinch) | ✅ funcional | frotas em trânsito com ETA |
+| Movimento de frota com ETA + colonização (UI) | ✅ funcional | painel de sistema, modo mover |
+| Colônia: ratios MoO + crescimento + fábricas + construção | ✅ funcional | 5 sliders + fila de naves |
+| Tecnologia funcional com efeitos | ✅ funcional | 6 cat × 5 níveis, escolha pela árvore |
+| IA NPC com FSM + personalidades | ✅ funcional | Zorg agressivo, Sylar expansionista |
+| Combate com atrito + captura de sistema | ✅ funcional | fusão de frotas concentra força |
+| Vitória/derrota + relatório de turno | ✅ funcional | modal de fim de jogo |
 | Diplomacia: paz/guerra | ✅ funcional | endpoint dedicado, não avança turno |
-| Save/Load por URL | ✅ funcional | sem HomePage "Continuar" (planejado) |
-| Combate frota vs frota | ⚠️ parcial | resolve com ruído; **não** captura sistema/colônia ainda |
-| IA NPC | ⚠️ stub | movimento aleatório, **não** é FSM por raça ainda (N1) |
-| Tech tree (UI) | ⚠️ stub visual | nós 🔒; pesquisa funciona via botão, não pela árvore |
-| Movimento de frota / colonização via UI | ❌ planejado | backend aceita MOVE_FLEET; falta FleetCard/StarSystemInfo |
-| Classes concretas não-Race (Planet/Fleet/Colony/...) | ❌ planejado | estado trafega como `*Data` (POJO); só Race tem impl concreta |
+| Classes concretas não-Race (Planet/Fleet/...) | ➖ por design | estado trafega como `*Data` (POJO); motor opera sobre dados |
+| Designer de naves 3D / sons / multiplayer | ❌ fora do escopo | naves pré-definidas; futuro |
 
-Entradas marcadas **(planejado)** nas tabelas abaixo descrevem o destino
-arquitetural, não arquivos existentes hoje.
+### Motor de jogo (shared/src/logic) — módulos
+`constants` (balanceamento) · `techCatalog` (tech + efeitos) · `gameMath` (helpers puros, fusão de frotas) · `ai` (FSM NPC) · `combat` (atrito + captura) · `gameSetup` (estado inicial) · `turnProcessor` (orquestra o turno) · `galaxyGenerator`. Verificação: `shared/scripts/sim.cjs`.
 
 ---
 

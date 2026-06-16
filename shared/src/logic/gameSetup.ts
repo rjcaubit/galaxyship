@@ -105,9 +105,10 @@ export function createInitialState(raceId: string, seed: number): GameState {
     fleets,
     relations,
     researchedTechs: [],
-    activeResearch: null,
+    activeResearch: { category: 'construction', pointsAccumulated: 0 },
     npcTech,
-    resources: { production: 0, research: 0, food: 0, credits: 50 },
+    // recursos iniciais refletem a colônia natal (evita HUD zerada no turno 1)
+    resources: { production: 4, research: 1, food: 4, credits: 50 },
     exploredSystems: [pHome],
     fleetSeq,
   }
