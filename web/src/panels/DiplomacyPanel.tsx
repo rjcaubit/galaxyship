@@ -1,7 +1,7 @@
 import { Panel, Badge, Button } from '../components/ui'
 import { useGameStore } from '../store/gameStore'
 import { useAuthStore } from '../store/authStore'
-import { apiEndTurn } from '../api/gameApi'
+import { apiDiplomacy } from '../api/gameApi'
 
 const RACE_LABELS: Record<string, { name: string; color: string }> = {
   zorg:  { name: 'Zorg',  color: '#EF9A9A' },
@@ -23,7 +23,7 @@ export function DiplomacyPanel({ open, onClose }: { open: boolean; onClose: () =
 
   async function act(targetRaceId: string, action: 'DECLARE_WAR' | 'PROPOSE_PEACE') {
     if (!token || !gameId) return
-    const { state: newState } = await apiEndTurn(token, gameId, [], [{ targetRaceId, action }])
+    const { state: newState } = await apiDiplomacy(token, gameId, [{ targetRaceId, action }])
     updateState(newState)
   }
 

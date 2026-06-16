@@ -42,13 +42,36 @@ check('CT04 load → colônia presente', Object.keys(loaded.state.colonies).leng
 const playerFleetId = Object.keys(state.fleets).find(f => state.fleets[f].raceId === 'humans')
 const homeSys = state.exploredSystems[0]
 const targetSys = Object.keys(state.systems).find(s => s !== homeSys)
+const homePopBefore = Object.values(state.colonies)[0].population
 r = await fetch(`${BASE}/game/${gameId}/turn`, { method: 'POST', headers: H, body: JSON.stringify({
-  orders: [{ type: 'MOVE_FLEET', fleetId: playerFleetId, targetSystemId: targetSys }, { type: 'SET_RESEARCH', category: 'weapons' }]
+  orders: [{ type: 'MOVE_FLEET', fleetId: playerFleetId, targetSystemId: targetSys }, { type: 'SET_RESEARCH', category: 'weapons' }, { type: 'START_BUILD', colonySystemId: homeSys, buildingId: 'factory' }]
 }) })
-const turnRes = await j(r)
-check('CT02 turn avança para 2', turnRes.state.turn === 2, `(turn=${turnRes.state.turn})`)
-check('CT02 frota moveu', turnRes.state.fleets[playerFleetId]?.systemId === targetSys)
-check('turn pesquisa ativa acumulou', turnRes.state.activeResearch?.pointsAccumulated > 0)
+const t1 = await j(r)
+check('CT02 turn avança para 2', t1.state.turn === 2, `(turn=${t1.state.turn})`)
+check('CT02 frota moveu', t1.state.fleets[playerFleetId]?.systemId === targetSys)
+
+// B2 — economia: população cresceu, recursos recalculados, construção em progresso
+const homeColony1 = Object.values(t1.state.colonies).find(c => c.systemId === homeSys)
+check('B2 população cresceu', homeColony1.population > homePopBefore, `(${homePopBefore}→${homeColony1.population})`)
+check('B2 recursos recalculados das colônias', t1.state.resources.production === homeColony1.population * 2 + homeColony1.buildings.length, `(prod=${t1.state.resources.production})`)
+check('B2 construção em progresso', homeColony1.buildProgress > 0 || homeColony1.buildings.includes('factory'), `(progress=${homeColony1.buildProgress}, edif=${homeColony1.buildings})`)
+
+// B2 — pesquisa desbloqueia após vários turnos
+let st = t1.state
+for (let i = 0; i < 12; i++) {
+  r = await fetch(`${BASE}/game/${gameId}/turn`, { method: 'POST', headers: H, body: JSON.stringify({ orders: [] }) })
+  st = (await j(r)).state
+}
+check('B2 tecnologia desbloqueada após pesquisa', st.researchedTechs.length >= 1, `(techs=${JSON.stringify(st.researchedTechs)})`)
+check('B2 edifício concluído após turnos', Object.values(st.colonies).find(c => c.systemId === homeSys).buildings.length >= 1)
+
+// B1 — diplomacia NÃO avança o turno
+const turnBeforeDiplo = st.turn
+r = await fetch(`${BASE}/game/${gameId}/diplomacy`, { method: 'POST', headers: H, body: JSON.stringify({ actions: [{ targetRaceId: 'zorg', action: 'DECLARE_WAR' }] }) })
+check('B1 diplomacia → 200', r.status === 200)
+const diplo = await j(r)
+check('B1 diplomacia NÃO avança turno', diplo.state.turn === turnBeforeDiplo, `(antes=${turnBeforeDiplo}, depois=${diplo.state.turn})`)
+check('B1 relação virou guerra', diplo.state.relations.zorg.status === 'war')
 
 // CT06 — game de outro user → 403
 r = await fetch(`${BASE}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u + '_b', password: 'x123456' }) })

@@ -26,6 +26,15 @@ export async function apiEndTurn(token: string, gameId: string, orders: object[]
   return r.json()
 }
 
+// Ação diplomática isolada — não avança o turno (ver B1)
+export async function apiDiplomacy(token: string, gameId: string, actions: object[]): Promise<{ state: GameState }> {
+  const r = await fetch(`${BASE}/game/${gameId}/diplomacy`, {
+    method: 'POST', headers: headers(token), body: JSON.stringify({ actions })
+  })
+  if (!r.ok) throw new Error((await r.json()).error)
+  return r.json()
+}
+
 export async function apiListGames(token: string) {
   const r = await fetch(`${BASE}/game/list`, { headers: headers(token) })
   return r.json()

@@ -1,4 +1,4 @@
-import type { GameState, TurnEvent, FleetData, TechCategory } from '@galaxyship/shared'
+import type { GameState, TurnEvent, FleetData, TechCategory, PlayerResources } from '@galaxyship/shared'
 
 interface TurnOrder {
   type:          string
@@ -12,6 +12,23 @@ interface TurnOrder {
 interface DiplomacyAction {
   targetRaceId: string
   action:       'DECLARE_WAR' | 'PROPOSE_PEACE' | 'OFFER_TECH'
+}
+
+const POP_CAP = 10            // população máxima por colônia no MVP
+const BUILD_COST = 100        // progresso necessário para concluir um edifício
+const TECH_COST = 50          // pontos de pesquisa por tecnologia desbloqueada
+
+/** Recalcula os recursos do jogador a partir das colônias que ele controla. */
+function computeResources(state: GameState): PlayerResources {
+  const playerColonies = Object.values(state.colonies).filter(c => c.raceId === state.playerRaceId)
+  let production = 0, research = 0, food = 0, credits = 0
+  for (const c of playerColonies) {
+    production += c.population * 2 + c.buildings.length
+    research   += c.population
+    food       += Math.round(c.population * 1.5) - c.population   // saldo de comida
+    credits    += c.population
+  }
+  return { production, research, food, credits }
 }
 
 export function processTurn(
@@ -36,29 +53,58 @@ export function processTurn(
       }
     }
     if (order.type === 'SET_RESEARCH' && order.category) {
-      s.activeResearch = { category: order.category as TechCategory, pointsAccumulated: 0 }
+      // troca de categoria preserva pontos só se for a mesma; senão reinicia
+      if (s.activeResearch?.category !== order.category) {
+        s.activeResearch = { category: order.category as TechCategory, pointsAccumulated: 0 }
+      }
     }
     if (order.type === 'START_BUILD' && order.colonySystemId && order.buildingId) {
-      const colony = Object.values(s.colonies).find(c => c.systemId === order.colonySystemId)
+      const colony = Object.values(s.colonies).find(c => c.systemId === order.colonySystemId && c.raceId === s.playerRaceId)
       if (colony) { colony.buildQueue = order.buildingId; colony.buildProgress = 0 }
     }
   }
 
-  // 2. Acumular pesquisa
-  if (s.activeResearch) {
-    s.activeResearch.pointsAccumulated += s.resources.research
-  }
-
-  // 3. Diplomacia do jogador
-  for (const da of diplomacyActions) {
-    if (s.relations[da.targetRaceId]) {
-      if (da.action === 'DECLARE_WAR')   s.relations[da.targetRaceId].status = 'war'
-      if (da.action === 'PROPOSE_PEACE') s.relations[da.targetRaceId].status = 'peace'
-      s.relations[da.targetRaceId].lastActionTurn = s.turn
+  // 2. Crescimento populacional + progresso de construção (colônias do jogador)
+  const foodSurplus = computeResources(s).food
+  for (const colony of Object.values(s.colonies)) {
+    if (colony.raceId !== s.playerRaceId) continue
+    // crescimento: +1 pop por turno se há saldo de comida e abaixo do cap
+    if (foodSurplus >= 0 && colony.population < POP_CAP) {
+      colony.population += 1
+    }
+    // construção: avança proporcional à produção da colônia
+    if (colony.buildQueue) {
+      colony.buildProgress += Math.max(10, colony.population * 2 + colony.buildings.length)
+      if (colony.buildProgress >= BUILD_COST) {
+        colony.buildings.push(colony.buildQueue)
+        events.push({ type: 'COLONY_FOUNDED', payload: { systemId: colony.systemId, building: colony.buildQueue } })
+        colony.buildQueue = null
+        colony.buildProgress = 0
+      }
     }
   }
 
-  // 4. IA age (simplificada no MVP: mover frota NPC para sistema aleatório)
+  // 3. Recalcular recursos já com a população crescida (HUD == ColonyPanel)
+  s.resources = computeResources(s)
+
+  // 4. Acumular pesquisa e desbloquear tecnologia ao atingir o custo
+  if (s.activeResearch) {
+    s.activeResearch.pointsAccumulated += s.resources.research
+    if (s.activeResearch.pointsAccumulated >= TECH_COST) {
+      const tier = s.researchedTechs.filter(t => t.startsWith(s.activeResearch!.category)).length + 1
+      const techId = `${s.activeResearch.category}_${tier}`
+      if (!s.researchedTechs.includes(techId)) {
+        s.researchedTechs.push(techId)
+        events.push({ type: 'TECH_UNLOCKED', payload: { techId, category: s.activeResearch.category, tier } })
+      }
+      s.activeResearch.pointsAccumulated = 0
+    }
+  }
+
+  // 5. Diplomacia do jogador (também aceita ações junto do turno)
+  applyDiplomacy(s, diplomacyActions)
+
+  // 6. IA age (simplificada no MVP: mover frota NPC para sistema aleatório — ver N1)
   const npcRaces = ['zorg', 'sylar'].filter(r => r !== s.playerRaceId)
   const systemIds = Object.keys(s.systems)
   for (const npcRaceId of npcRaces) {
@@ -69,7 +115,27 @@ export function processTurn(
     }
   }
 
-  // 5. Verificar combates (frotas de raças diferentes no mesmo sistema)
+  // 7. Combate (frotas de raças diferentes no mesmo sistema)
+  resolveCombats(s, events)
+
+  // 8. Avançar turno
+  s.turn += 1
+
+  return { newState: s, events }
+}
+
+/** Aplica ações diplomáticas ao estado (sem avançar turno). Reutilizado pela rota dedicada. */
+export function applyDiplomacy(s: GameState, diplomacyActions: DiplomacyAction[]) {
+  for (const da of diplomacyActions) {
+    const rel = s.relations[da.targetRaceId]
+    if (!rel) continue
+    if (da.action === 'DECLARE_WAR')   rel.status = 'war'
+    if (da.action === 'PROPOSE_PEACE') rel.status = 'peace'
+    rel.lastActionTurn = s.turn
+  }
+}
+
+function resolveCombats(s: GameState, events: TurnEvent[]) {
   const systemFleets: Record<string, FleetData[]> = {}
   for (const fleet of Object.values(s.fleets)) {
     if (!systemFleets[fleet.systemId]) systemFleets[fleet.systemId] = []
@@ -77,31 +143,29 @@ export function processTurn(
   }
   for (const [systemId, fleets] of Object.entries(systemFleets)) {
     const races = [...new Set(fleets.map(f => f.raceId))]
-    if (races.length > 1) {
-      const playerFleets = fleets.filter(f => f.raceId === s.playerRaceId)
-      const enemyFleets  = fleets.filter(f => f.raceId !== s.playerRaceId)
-      if (playerFleets.length && enemyFleets.length) {
-        const playerPower = playerFleets.reduce((acc, f) => acc + f.attackPower * f.shipCount, 0)
-        const enemyPower  = enemyFleets.reduce((acc, f) => acc + f.attackPower * f.shipCount, 0)
-        const winner = playerPower >= enemyPower ? s.playerRaceId : enemyFleets[0].raceId
-        events.push({
-          type: 'COMBAT',
-          payload: { systemId, winner, log: [
-            { round: 1, text: `Poder do jogador: ${playerPower} vs inimigo: ${enemyPower}`, type: 'attack' },
-            { round: 1, text: `Vitória: ${winner}`, type: 'result' }
-          ]}
-        })
-        if (winner !== s.playerRaceId) {
-          for (const f of playerFleets) delete s.fleets[f.id]
-        } else {
-          for (const f of enemyFleets) delete s.fleets[f.id]
-        }
-      }
+    if (races.length < 2) continue
+    const playerFleets = fleets.filter(f => f.raceId === s.playerRaceId)
+    const enemyFleets  = fleets.filter(f => f.raceId !== s.playerRaceId)
+    if (!playerFleets.length || !enemyFleets.length) continue
+
+    // poder = ataque ofensivo do atacante vs defesa do defensor, com ruído
+    const noise = () => 0.85 + Math.random() * 0.3
+    const playerPower = playerFleets.reduce((a, f) => a + (f.attackPower + f.defensePower) * f.shipCount, 0) * noise()
+    const enemyPower  = enemyFleets.reduce((a, f) => a + (f.attackPower + f.defensePower) * f.shipCount, 0) * noise()
+    const winner = playerPower >= enemyPower ? s.playerRaceId : enemyFleets[0].raceId
+
+    events.push({
+      type: 'COMBAT',
+      payload: { systemId, winner, log: [
+        { round: 1, text: `Poder do jogador: ${Math.round(playerPower)} vs inimigo: ${Math.round(enemyPower)}`, type: 'attack' },
+        { round: 1, text: winner === s.playerRaceId ? 'Frota inimiga destruída!' : 'Sua frota foi destruída!', type: 'result' }
+      ]}
+    })
+
+    if (winner !== s.playerRaceId) {
+      for (const f of playerFleets) delete s.fleets[f.id]
+    } else {
+      for (const f of enemyFleets) delete s.fleets[f.id]
     }
   }
-
-  // 6. Avançar turno
-  s.turn += 1
-
-  return { newState: s, events }
 }

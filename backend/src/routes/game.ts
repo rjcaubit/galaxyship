@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import { authMiddleware, AuthRequest } from '../middleware/auth'
 import { generateGalaxy } from '@galaxyship/shared'
 import type { GameState, FleetData, ColonyData, DiplomacyRelation } from '@galaxyship/shared'
-import { processTurn } from '../services/turnService'
+import { processTurn, applyDiplomacy } from '../services/turnService'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -103,6 +103,23 @@ router.post('/:id/turn', async (req: AuthRequest, res) => {
   })
 
   res.json({ state: newState, events })
+})
+
+// Ação diplomática isolada — aplica relação SEM avançar o turno (ver B1)
+router.post('/:id/diplomacy', async (req: AuthRequest, res) => {
+  const game = await prisma.game.findUnique({ where: { id: req.params.id } })
+  if (!game) return res.status(404).json({ error: 'not_found' })
+  if (game.userId !== req.userId) return res.status(403).json({ error: 'forbidden' })
+
+  const { actions = [] } = req.body
+  if (!Array.isArray(actions) || actions.length === 0) {
+    return res.status(400).json({ error: 'actions obrigatório' })
+  }
+  const state = game.stateJson as unknown as GameState
+  applyDiplomacy(state, actions)
+
+  await prisma.game.update({ where: { id: req.params.id }, data: { stateJson: state as object } })
+  res.json({ state })
 })
 
 router.put('/:id/save', async (req: AuthRequest, res) => {
