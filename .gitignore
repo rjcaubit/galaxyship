@@ -4,3 +4,7 @@ dist/
 *.log
 .DS_Store
 shared/dist/
+
+.playwright-mcp/
+*.png
+!web/public/**/*.png

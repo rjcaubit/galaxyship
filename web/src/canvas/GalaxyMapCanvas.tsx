@@ -1,21 +1,43 @@
 import { useEffect, useRef } from 'react'
 import { Application, Container } from 'pixi.js'
 import { getPixiApp, destroyPixiApp } from './PixiApp'
-import { StarsLayer }          from './layers/StarsLayer'
-import { NebulaeLayer }        from './layers/NebulaeLayer'
+import { StarsLayer }           from './layers/StarsLayer'
+import { NebulaeLayer }         from './layers/NebulaeLayer'
 import { BackgroundStarsLayer } from './layers/BackgroundStarsLayer'
-import { FleetsLayer }         from './layers/FleetsLayer'
+import { LanesLayer }           from './layers/LanesLayer'
+import { FleetsLayer }          from './layers/FleetsLayer'
 import { useGameStore } from '../store/gameStore'
+import type { GameState } from '@galaxyship/shared'
 
 export function GalaxyMapCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const appRef    = useRef<Application | null>(null)
-  const starsRef  = useRef<StarsLayer | null>(null)
-  const fleetsRef = useRef<FleetsLayer | null>(null)
-  const dimsRef   = useRef<{ w: number; h: number }>({ w: 0, h: 0 })
-  const hasState  = !!useGameStore(s => s.state)
+  const layersRef = useRef<{
+    nebulae: NebulaeLayer; bgStars: BackgroundStarsLayer; lanes: LanesLayer;
+    stars: StarsLayer; fleets: FleetsLayer
+  } | null>(null)
+  const hasState = !!useGameStore(s => s.state)
 
-  // Inicializa o canvas uma única vez quando o estado existe
+  // Re-renderiza todas as camadas para um dado tamanho de tela
+  function renderWorld(state: GameState, w: number, h: number) {
+    const L = layersRef.current
+    if (!L) return
+    const colonized = Object.values(state.colonies).map(c => c.systemId)
+    L.nebulae.render(42, w, h)
+    L.bgStars.render(7, w, h, 1000)
+    L.lanes.render(state.systems, state.exploredSystems, w, h)
+    L.stars.render(state.systems, state.exploredSystems, colonized, w, h)
+    L.fleets.render(state.fleets, state.systems, state.exploredSystems, state.playerRaceId, w, h)
+    // (re)liga cliques nas estrelas
+    Object.keys(state.systems).forEach(id => {
+      L.stars.onStarClick(id, (sysId) => {
+        useGameStore.getState().selectSystem(sysId)
+        const hasColony = Object.values(useGameStore.getState().state?.colonies ?? {}).some(c => c.systemId === sysId)
+        useGameStore.getState().openPanel(hasColony ? 'colony' : null)
+      })
+    })
+  }
+
   useEffect(() => {
     if (!canvasRef.current || !hasState) return
     let mounted = true
@@ -28,41 +50,23 @@ export function GalaxyMapCanvas() {
       const viewport = new Container()
       app.stage.addChild(viewport)
 
-      const nebulae = new NebulaeLayer()
-      const bgStars = new BackgroundStarsLayer()
-      const stars   = new StarsLayer()
-      const fleets  = new FleetsLayer()
-      viewport.addChild(nebulae, bgStars, stars, fleets)
-      starsRef.current  = stars
-      fleetsRef.current = fleets
-
-      // Mundo = tela inteira (preenche o desktop); margem fica no mapeamento
-      const width  = app.screen.width
-      const height = app.screen.height
-      dimsRef.current = { w: width, h: height }
-
-      const colonizedSystemIds = Object.values(state.colonies).map(c => c.systemId)
-      nebulae.render(42, width, height)
-      bgStars.render(7, width, height)
-      stars.render(state.systems, state.exploredSystems, colonizedSystemIds, width, height)
-      fleets.render(state.fleets, state.systems, state.exploredSystems, state.playerRaceId, width, height)
-
-      // Clique em estrela: seleciona e abre ColonyPanel se houver colônia
-      Object.keys(state.systems).forEach(id => {
-        stars.onStarClick(id, (sysId) => {
-          useGameStore.getState().selectSystem(sysId)
-          const hasColony = Object.values(useGameStore.getState().state?.colonies ?? {}).some(c => c.systemId === sysId)
-          useGameStore.getState().openPanel(hasColony ? 'colony' : null)
-        })
-      })
-
-      // Centraliza o viewport no sistema home
-      const home = state.exploredSystems[0]
-      const homeSys = home ? state.systems[home] : null
-      if (homeSys) {
-        viewport.x = width  / 2 - (56 + homeSys.x * (width  - 112))
-        viewport.y = height / 2 - (56 + homeSys.y * (height - 112))
+      const layers = {
+        nebulae: new NebulaeLayer(),
+        bgStars: new BackgroundStarsLayer(),
+        lanes:   new LanesLayer(),
+        stars:   new StarsLayer(),
+        fleets:  new FleetsLayer(),
       }
+      viewport.addChild(layers.nebulae, layers.bgStars, layers.lanes, layers.stars, layers.fleets)
+      layersRef.current = layers
+
+      renderWorld(state, app.screen.width, app.screen.height)
+
+      // Re-renderiza ao redimensionar a janela (Pixi já ajusta o canvas)
+      app.renderer.on('resize', (w: number, h: number) => {
+        const s = useGameStore.getState().state
+        if (s) renderWorld(s, w, h)
+      })
 
       // Drag para mover viewport (mouse + 1 dedo)
       let dragging = false, lastX = 0, lastY = 0
@@ -95,8 +99,8 @@ export function GalaxyMapCanvas() {
 
       // Animação contínua (pulso das estrelas + cintilar do fundo)
       app.ticker.add(ticker => {
-        stars.tick(ticker.lastTime)
-        bgStars.tick(ticker.lastTime)
+        layers.stars.tick(ticker.lastTime)
+        layers.bgStars.tick(ticker.lastTime)
       })
     })
 
@@ -104,28 +108,16 @@ export function GalaxyMapCanvas() {
       mounted = false
       destroyPixiApp()
       appRef.current = null
-      starsRef.current = null
-      fleetsRef.current = null
+      layersRef.current = null
     }
   }, [hasState])
 
-  // Re-renderiza estrelas e frotas quando o estado muda (após cada turno),
-  // sem recriar o canvas — assim as naves se movem e novos sistemas aparecem.
+  // Re-renderiza ao mudar o estado (após cada turno) sem recriar o canvas
   const gameState = useGameStore(s => s.state)
   useEffect(() => {
-    if (!gameState || !starsRef.current || !fleetsRef.current) return
-    const { w, h } = dimsRef.current
-    if (!w || !h) return
-    const colonizedSystemIds = Object.values(gameState.colonies).map(c => c.systemId)
-    starsRef.current.render(gameState.systems, gameState.exploredSystems, colonizedSystemIds, w, h)
-    Object.keys(gameState.systems).forEach(id => {
-      starsRef.current!.onStarClick(id, (sysId) => {
-        useGameStore.getState().selectSystem(sysId)
-        const hasColony = Object.values(useGameStore.getState().state?.colonies ?? {}).some(c => c.systemId === sysId)
-        useGameStore.getState().openPanel(hasColony ? 'colony' : null)
-      })
-    })
-    fleetsRef.current.render(gameState.fleets, gameState.systems, gameState.exploredSystems, gameState.playerRaceId, w, h)
+    const app = appRef.current
+    if (!gameState || !app || !layersRef.current) return
+    renderWorld(gameState, app.screen.width, app.screen.height)
   }, [gameState])
 
   return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full touch-none" />

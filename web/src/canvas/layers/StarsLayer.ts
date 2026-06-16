@@ -24,19 +24,19 @@ export class StarsLayer extends Container {
       const colonized = colonizedSystemIds.includes(sys.id)
       const px = mapX(sys.x, width)
       const py = mapY(sys.y, height)
-      const color = explored ? (STAR_COLORS[sys.starType] ?? 0xffffff) : 0x5b5b80
+      const color = explored ? (STAR_COLORS[sys.starType] ?? 0xffffff) : 0x9aa6d4
 
       // halo externo (glow) — animado
       const glow = new Graphics()
-      glow.circle(0, 0, explored ? 26 : 12).fill({ color, alpha: 0.10 })
-      glow.circle(0, 0, explored ? 16 : 8).fill({ color, alpha: 0.18 })
+      glow.circle(0, 0, explored ? 30 : 16).fill({ color, alpha: explored ? 0.14 : 0.10 })
+      glow.circle(0, 0, explored ? 18 : 9).fill({ color, alpha: explored ? 0.24 : 0.18 })
       glow.x = px; glow.y = py
 
       // corpo da estrela
       const body = new Graphics()
-      if (colonized) body.circle(0, 0, 17).stroke({ color: 0x8effb0, width: 2.5, alpha: 0.9 })
-      body.circle(0, 0, explored ? 8 : 4).fill({ color })
-      if (explored) body.circle(0, 0, 3.5).fill({ color: 0xffffff, alpha: 0.9 }) // núcleo quente
+      if (colonized) body.circle(0, 0, 19).stroke({ color: 0x8effb0, width: 3, alpha: 0.95 })
+      body.circle(0, 0, explored ? 9 : 5).fill({ color })
+      body.circle(0, 0, explored ? 4 : 2).fill({ color: 0xffffff, alpha: explored ? 0.95 : 0.7 }) // núcleo quente
       body.x = px; body.y = py
       body.eventMode = 'static'
       body.cursor    = 'pointer'
@@ -44,13 +44,15 @@ export class StarsLayer extends Container {
       ;(body as Graphics & { __systemId: string }).__systemId = sys.id
 
       const label = new Text({
-        text: explored ? sys.name : '',
+        text: explored ? sys.name : '·',
         style: new TextStyle({
-          fill: 0xffffff, fontSize: 13, fontFamily: 'Exo 2, sans-serif',
+          fill: explored ? 0xffffff : 0x8a93bf, fontSize: explored ? 13 : 11,
+          fontFamily: 'Exo 2, sans-serif',
           fontWeight: '600', dropShadow: { color: 0x000000, blur: 4, distance: 0, alpha: 0.8 },
         })
       })
       label.x = px + 14; label.y = py - 8
+      label.alpha = explored ? 1 : 0.6
 
       this.addChild(glow, body, label)
       this.starGraphics.set(sys.id, { glow, pulsePhase: (sys.x + sys.y) * Math.PI * 4 })
