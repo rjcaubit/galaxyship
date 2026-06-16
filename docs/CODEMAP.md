@@ -1,7 +1,32 @@
 # CODEMAP — GalaxyShip
 
 > Fonte da verdade arquitetural. Atualizar a cada issue implementada.
-> Última atualização: 2026-06-15 (ISSUE_1 — spec criada, pré-implementação)
+> Última atualização: 2026-06-15 (ISSUE_1 — implementada)
+
+---
+
+## Status de implementação (MVP issue #1)
+
+Para evitar divergência entre plano e realidade, esta tabela marca o que é
+**funcional** vs **stub visual** vs **planejado (arquivo ainda não existe)**.
+
+| Área | Status | Observação |
+|------|--------|------------|
+| Auth (register/login/JWT) | ✅ funcional | |
+| Galáxia procedural por seed | ✅ funcional | 55 sistemas, fog of war |
+| Mapa Pixi (estrelas/nebulosas/drag/pinch) | ✅ funcional | |
+| Colônia: crescimento pop + produção + construção | ✅ funcional | calculado no turno |
+| Pesquisa: acúmulo + desbloqueio de tech | ✅ funcional (sem efeitos) | tech desbloqueada não altera stats ainda |
+| Diplomacia: paz/guerra | ✅ funcional | endpoint dedicado, não avança turno |
+| Save/Load por URL | ✅ funcional | sem HomePage "Continuar" (planejado) |
+| Combate frota vs frota | ⚠️ parcial | resolve com ruído; **não** captura sistema/colônia ainda |
+| IA NPC | ⚠️ stub | movimento aleatório, **não** é FSM por raça ainda (N1) |
+| Tech tree (UI) | ⚠️ stub visual | nós 🔒; pesquisa funciona via botão, não pela árvore |
+| Movimento de frota / colonização via UI | ❌ planejado | backend aceita MOVE_FLEET; falta FleetCard/StarSystemInfo |
+| Classes concretas não-Race (Planet/Fleet/Colony/...) | ❌ planejado | estado trafega como `*Data` (POJO); só Race tem impl concreta |
+
+Entradas marcadas **(planejado)** nas tabelas abaixo descrevem o destino
+arquitetural, não arquivos existentes hoje.
 
 ---
 
@@ -74,21 +99,21 @@ galaxyship/
 | `shared/src/entities/Technology.ts` | `Technology extends Entity` | `TechnologyParams` | `TechnologyActions` |
 | `shared/src/entities/Building.ts` | `Building extends Entity` | `BuildingParams` | `BuildingActions` |
 | `shared/src/entities/Colony.ts` | `Colony extends Entity` | `ColonyParams` | `ColonyActions` |
-| `shared/src/entities/impl/HumanRace.ts` | `HumanRace extends Race` | — | implementação concreta |
-| `shared/src/entities/impl/ZorgRace.ts` | `ZorgRace extends Race` | — | raça NPC agressiva |
-| `shared/src/entities/impl/SylarRace.ts` | `SylarRace extends Race` | — | raça NPC expansionista |
-| `shared/src/entities/impl/TerranPlanet.ts` | `TerranPlanet extends Planet` | — | planeta padrão |
+| `shared/src/entities/impl/HumanRace.ts` | `HumanRace extends Race` | — | ✅ implementação concreta |
+| `shared/src/entities/impl/ZorgRace.ts` | `ZorgRace extends Race` | — | ✅ raça NPC agressiva |
+| `shared/src/entities/impl/SylarRace.ts` | `SylarRace extends Race` | — | ✅ raça NPC expansionista |
+| `shared/src/entities/impl/TerranPlanet.ts` | `TerranPlanet extends Planet` | — | ❌ planejado (estado usa `PlanetData` POJO) |
 
 ### Lógica de jogo
 
-| Arquivo | Responsabilidade |
-|---------|-----------------|
-| `shared/src/logic/galaxyGenerator.ts` | Gera galáxia proceduralmente a partir de seed |
-| `shared/src/logic/combatResolver.ts` | Resolve combate frota vs frota → `CombatResult` |
-| `shared/src/logic/turnProcessor.ts` | Aplica turno: recursos, construção, crescimento |
-| `shared/src/logic/aiController.ts` | FSM de IA para raças NPC |
-| `shared/src/logic/techTree.ts` | Registra e valida dependências de tecnologias |
-| `shared/src/logic/colonyCalculator.ts` | Calcula stats derivados de colônia |
+| Arquivo | Responsabilidade | Status |
+|---------|-----------------|--------|
+| `shared/src/logic/galaxyGenerator.ts` | Gera galáxia proceduralmente a partir de seed | ✅ existe |
+| `backend/src/services/turnService.ts` | Turno: recursos, crescimento, construção, pesquisa, IA, combate | ✅ existe (no backend, não em shared) |
+| `shared/src/logic/combatResolver.ts` | Combate isolado → `CombatResult` | ❌ planejado (hoje inline em turnService) |
+| `shared/src/logic/aiController.ts` | FSM de IA para raças NPC | ❌ planejado (hoje movimento aleatório inline) |
+| `shared/src/logic/techTree.ts` | Dependências de tecnologias | ❌ planejado |
+| `shared/src/logic/colonyCalculator.ts` | Stats derivados de colônia | ❌ planejado (hoje `computeResources` em turnService) |
 
 ### Tipos
 
@@ -106,7 +131,7 @@ galaxyship/
 |---------|-----------------|
 | `backend/src/index.ts` | Bootstrap Express, middlewares, rotas |
 | `backend/src/routes/auth.ts` | `POST /api/auth/register`, `POST /api/auth/login` |
-| `backend/src/routes/game.ts` | `POST /api/game/new`, `GET /api/game/:id`, `POST /api/game/:id/turn`, `PUT /api/game/:id/save` |
+| `backend/src/routes/game.ts` | `POST /game/new`, `GET /game/:id`, `GET /game/list`, `POST /game/:id/turn`, `POST /game/:id/diplomacy`, `PUT /game/:id/save` |
 | `backend/src/services/gameService.ts` | Criar partida, serializar/deserializar GameState |
 | `backend/src/services/turnService.ts` | Orquestra `turnProcessor` + `aiController` + `combatResolver` |
 | `backend/prisma/schema.prisma` | Tabelas: `User`, `Game` |
@@ -148,19 +173,19 @@ Game    — id, userId, seed, turnNumber, stateJson, createdAt, updatedAt
 > Componentes específicos do jogo. Podem importar tipos do `shared/`. **Não** importam store diretamente —
 > recebem dados via props para maximizar reutilização e testabilidade.
 
-| Componente | Props | Uso |
-|-----------|-------|-----|
-| `RaceCard.tsx` | `race: Race`, `selected?`, `onSelect?` | Seleção de raça |
-| `PlanetCard.tsx` | `planet: Planet`, `colony?: Colony` | Info do planeta |
-| `StarSystemInfo.tsx` | `system: StarSystem`, `fleets`, `onClose` | Popup do sistema no mapa |
-| `FleetCard.tsx` | `fleet: Fleet`, `onMove?`, `onAttack?` | Status e ações de frota |
-| `TechNode.tsx` | `tech: Technology`, `status`, `onResearch?` | Nó da árvore de tecnologia |
-| `ColonyStats.tsx` | `colony: Colony`, `planet: Planet` | Barras prod/pesquisa/comida |
-| `DiplomacyRow.tsx` | `race: Race`, `relation`, `onAction?` | Linha da raça no painel de diplomacia |
-| `CombatLogEntry.tsx` | `entry: CombatLogLine` | Linha do log de combate |
-| `TurnCounter.tsx` | `turn: number`, `maxTurns?` | Display do turno atual |
-| `ResourceHUD.tsx` | `resources: PlayerResources` | HUD superior de recursos |
-| `LockedFeature.tsx` | `label`, `reason?` | Wrapper 🔒 para features futuras |
+| Componente | Props | Status |
+|-----------|-------|--------|
+| `RaceCard.tsx` | `race: RaceParams`, `selected?`, `onSelect?` | ✅ existe |
+| `ColonyStats.tsx` | `colony: ColonyData` | ✅ existe |
+| `CombatLogEntry.tsx` | `entry: CombatLogLine` | ✅ existe |
+| `TurnCounter.tsx` | `turn: number` | ✅ existe |
+| `ResourceHUD.tsx` | `resources: PlayerResources` | ✅ existe |
+| `LockedFeature.tsx` | `label`, `reason?` | ✅ existe |
+| `PlanetCard.tsx` | `planet`, `colony?` | ❌ planejado |
+| `StarSystemInfo.tsx` | `system`, `fleets`, `onClose` | ❌ planejado (clique abre ColonyPanel direto) |
+| `FleetCard.tsx` | `fleet`, `onMove?`, `onAttack?` | ❌ planejado (sem UI de movimento) |
+| `TechNode.tsx` | `tech`, `status`, `onResearch?` | ❌ planejado (tech tree é stub visual) |
+| `DiplomacyRow.tsx` | `race`, `relation`, `onAction?` | ❌ planejado (linha inline no DiplomacyPanel) |
 
 ---
 
@@ -217,3 +242,11 @@ Game    — id, userId, seed, turnNumber, stateJson, createdAt, updatedAt
 | Save via `PUT /api/game/:id/save` só ao fim de cada turno | `gameStore.ts` |
 | Estado do jogo serializado como `GameState` JSON no PostgreSQL | `games.stateJson` |
 | Multiplayer: socket.io pronto em `backend/src/index.ts` (comentado) | `backend/src/index.ts` |
+
+---
+
+## Histórico SDD
+
+| Issue | Título | Status |
+|-------|--------|--------|
+| #1 | MVP jogo 4X espacial GalaxyShip | ✅ Implementada (2026-06-15) |
