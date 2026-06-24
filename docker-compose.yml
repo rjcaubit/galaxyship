@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: galaxyship
+      POSTGRES_PASSWORD: galaxyship_dev
+      POSTGRES_DB: galaxyship
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    ports:
+      - "3301:3301"
+    environment:
+      DATABASE_URL: postgresql://galaxyship:galaxyship_dev@db:5432/galaxyship
+      JWT_SECRET: dev_secret_change_in_prod
+      PORT: 3301
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/app
+      - ./shared:/shared
+      - /app/node_modules
+
+  web:
+    build: ./web
+    ports:
+      - "3300:3300"
+    environment:
+      VITE_API_URL: http://localhost:3301/api
+    volumes:
+      - ./web:/app
+      - ./shared:/shared
+      - /app/node_modules
+
+volumes:
+  pgdata:
